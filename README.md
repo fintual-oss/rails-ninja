@@ -5,7 +5,7 @@ Rails Ninja is a small Rails API framework inspired by
 request validation and response serialization, and generated OpenAPI
 documentation.
 
-Rails Ninja requires Rails 7 or newer.
+Rails Ninja requires Ruby 3 or newer and Rails 7 or newer.
 
 ## Installation
 
@@ -257,6 +257,19 @@ bundle exec rake rails_ninja:openapi:generate OUTPUT=docs/api
 
 The default output directory is `public/openapi`. File names come from the API
 class name, such as `PublicApi` to `public_api.json`.
+
+## Development
+
+Install dependencies and run the test suite:
+
+```sh
+bundle install
+bundle exec rake test
+```
+
+CI tests every compatible combination of Action Pack and Active Support 7.0
+through 8.1 with MRI Ruby 3.0 through 4.0. Each lane resolves the latest patch
+release in its minor series.
 
 ## License
 
