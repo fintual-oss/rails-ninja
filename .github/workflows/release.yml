@@ -1,0 +1,59 @@
+name: Release gem
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  test:
+    name: Test release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "ruby"
+          bundler-cache: true
+
+      - name: Verify tag matches gem version
+        run: |
+          expected="v$(ruby -Ilib -rrails_ninja/version -e 'print RailsNinja::VERSION')"
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match gem version $expected"
+            exit 1
+          fi
+
+      - name: Run tests
+        run: bundle exec rake test
+
+  release:
+    name: Publish to RubyGems.org
+    needs: test
+    runs-on: ubuntu-22.04
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "ruby"
+          bundler-cache: true
+
+      - name: Publish gem
+        uses: rubygems/release-gem@v1

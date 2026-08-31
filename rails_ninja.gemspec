@@ -1,21 +1,29 @@
 # frozen_string_literal: true
 
-lib = File.expand_path("lib", __dir__)
-$LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
+require_relative "lib/rails_ninja/version"
 
 Gem::Specification.new do |spec|
   spec.name = "rails_ninja"
-  spec.version = "0.1.0"
+  spec.version = RailsNinja::VERSION
   spec.authors = ["Benjamin Urrutia"]
   spec.email = ["benja@fintual.com"]
   spec.summary = "Django Ninja-inspired API framework for Ruby/Rails"
   spec.description = "Define API endpoints with a decorator-like DSL, schema validation, and automatic OpenAPI spec generation."
-  spec.homepage = "https://www.fintual.com"
+  spec.homepage = "https://github.com/fintual-oss/rails-ninja"
+  spec.license = "MIT"
   spec.required_ruby_version = ">= 3.0"
 
-  spec.metadata["allowed_push_host"] = "https://www.fintual.com"
+  spec.metadata["allowed_push_host"] = "https://rubygems.org"
   spec.metadata["homepage_uri"] = spec.homepage
+  spec.metadata["source_code_uri"] = spec.homepage
+  spec.metadata["bug_tracker_uri"] = "#{spec.homepage}/issues"
+  spec.metadata["changelog_uri"] = "#{spec.homepage}/releases"
+  spec.metadata["rubygems_mfa_required"] = "true"
 
+  spec.files = Dir.chdir(__dir__) do
+    Dir["lib/**/*"].select { |path| File.file?(path) } +
+      %w[LICENSE README.md rails_ninja.gemspec]
+  end
   spec.require_paths = ["lib"]
 
   spec.add_dependency "actionpack", ">= 7.0"
