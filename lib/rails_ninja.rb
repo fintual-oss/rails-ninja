@@ -34,12 +34,12 @@ module RailsNinja
     @registered_apis ||= []
   end
 
-  def self.generate_openapi(output: "public/openapi")
+  def self.generate_openapi(output: "public/openapi", openapi_version: OpenAPI::Generator::DEFAULT_VERSION)
     require "fileutils"
     FileUtils.mkdir_p(output)
 
     registered_apis.each do |api_class|
-      generator = OpenAPI::Generator.new(api_class)
+      generator = OpenAPI::Generator.new(api_class, openapi_version: openapi_version)
 
       filename = api_class.name.split("::").last
         .gsub(/([A-Z]+)([A-Z][a-z])/, '\1_\2')

@@ -3,8 +3,16 @@
 module RailsNinja
   module OpenAPI
     class Generator
-      def initialize(api_class)
+      DEFAULT_VERSION = "3.2.0"
+      SUPPORTED_VERSION_PATTERN = /\A3\.(?:0|1|2)\.\d+\z/
+
+      def initialize(api_class, openapi_version: DEFAULT_VERSION)
+        unless openapi_version.match?(SUPPORTED_VERSION_PATTERN)
+          raise ArgumentError, "unsupported OpenAPI version: #{openapi_version.inspect} (expected 3.0.x, 3.1.x, or 3.2.x)"
+        end
+
         @api_class = api_class
+        @openapi_version = openapi_version
       end
 
       def to_hash
@@ -16,7 +24,7 @@ module RailsNinja
         end
 
         spec = {
-          openapi: "3.2.0",
+          openapi: @openapi_version,
           info: {
             title: @api_class._title || @api_class.name || "API",
             version: @api_class._version || "0.1.0",
