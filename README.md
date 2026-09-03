@@ -253,10 +253,13 @@ Generate an OpenAPI 3.2 JSON file for every API:
 ```sh
 bundle exec rake rails_ninja:openapi:generate
 bundle exec rake rails_ninja:openapi:generate OUTPUT=docs/api
+bundle exec rake rails_ninja:openapi:generate OPENAPI_VERSION=3.1.0
 ```
 
-The default output directory is `public/openapi`. File names come from the API
-class name, such as `PublicApi` to `public_api.json`.
+The default OpenAPI version is 3.2.0. Set `OPENAPI_VERSION` to a 3.0.x, 3.1.x,
+or 3.2.x version when a consumer requires another dialect. The default output
+directory is `public/openapi`. File names come from the API class name, such as
+`PublicApi` to `public_api.json`.
 
 ## Development
 

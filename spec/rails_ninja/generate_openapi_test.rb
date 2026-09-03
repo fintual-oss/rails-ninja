@@ -60,6 +60,16 @@ class GenerateOpenAPITest < Minitest::Test
     end
   end
 
+  def test_generates_the_selected_openapi_version
+    Dir.mktmpdir do |dir|
+      RailsNinja.instance_variable_set(:@registered_apis, [PublicApi])
+      RailsNinja.generate_openapi(output: dir, openapi_version: "3.0.3")
+
+      spec = MultiJson.load(File.read(File.join(dir, "public_api.json")))
+      assert_equal "3.0.3", spec["openapi"]
+    end
+  end
+
   def test_file_naming_is_snake_cased
     Dir.mktmpdir do |dir|
       RailsNinja.instance_variable_set(:@registered_apis, [PublicApi, AdminApi])
@@ -132,6 +142,7 @@ class RakeTaskTest < Minitest::Test
     RailsNinja.instance_variable_set(:@registered_apis, @original_apis)
     Rake.application = Rake::Application.new
     ENV.delete("OUTPUT")
+    ENV.delete("OPENAPI_VERSION")
   end
 
   def test_task_is_loadable_and_invokable
@@ -156,6 +167,20 @@ class RakeTaskTest < Minitest::Test
       Rake::Task["rails_ninja:openapi:generate"].invoke
 
       assert File.exist?(File.join(custom, "admin_api.json"))
+    end
+  end
+
+  def test_respects_openapi_version_env_var
+    Dir.mktmpdir do |dir|
+      ENV["OUTPUT"] = dir
+      ENV["OPENAPI_VERSION"] = "3.1.0"
+      RailsNinja.instance_variable_set(:@registered_apis, [PublicApi])
+
+      Rake::Task["rails_ninja:openapi:generate"].reenable
+      Rake::Task["rails_ninja:openapi:generate"].invoke
+
+      spec = MultiJson.load(File.read(File.join(dir, "public_api.json")))
+      assert_equal "3.1.0", spec["openapi"]
     end
   end
 end

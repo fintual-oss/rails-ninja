@@ -86,6 +86,20 @@ class GeneratorTest < Minitest::Test
     assert spec[:components][:schemas]
   end
 
+  def test_openapi_version_can_be_selected
+    spec = RailsNinja::OpenAPI::Generator.new(GeneratorTestApi, openapi_version: "3.1.0").to_hash
+
+    assert_equal "3.1.0", spec[:openapi]
+  end
+
+  def test_rejects_unsupported_openapi_version
+    error = assert_raises(ArgumentError) do
+      RailsNinja::OpenAPI::Generator.new(GeneratorTestApi, openapi_version: "2.0")
+    end
+
+    assert_match "expected 3.0.x, 3.1.x, or 3.2.x", error.message
+  end
+
   def test_servers_omitted_when_not_declared
     spec = @generator.to_hash
 
