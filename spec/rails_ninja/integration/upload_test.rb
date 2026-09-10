@@ -117,6 +117,27 @@ class UploadIntegrationTest < Minitest::Test
     body = MultiJson.load(last_response.body, symbolize_keys: true)
     assert_equal %w[hello.txt hello.txt], body[:filenames]
   end
+
+  # rack-test rewrites array params to `files[]`; OpenAPI clients repeat the bare name.
+  def test_repeated_parts_under_the_bare_field_name
+    part = lambda do |filename|
+      "--XB\r\nContent-Disposition: form-data; name=\"files\"; filename=\"#{filename}\"\r\n" \
+        "Content-Type: text/plain\r\n\r\nx\r\n"
+    end
+    env = Rack::MockRequest.env_for(
+      "/attachments",
+      method: "POST",
+      input: "#{part['a.txt']}#{part['b.txt']}--XB--\r\n",
+      "CONTENT_TYPE" => "multipart/form-data; boundary=XB"
+    )
+
+    status, _headers, response = UploadApi.call(env)
+    body = +""
+    response.each { |chunk| body << chunk }
+
+    assert_equal 200, status
+    assert_equal %w[a.txt b.txt], MultiJson.load(body, symbolize_keys: true)[:filenames]
+  end
 end
 
 # rubocop:enable RSpecRails/MinitestAssertions

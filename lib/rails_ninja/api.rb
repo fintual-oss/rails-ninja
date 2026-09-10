@@ -347,13 +347,42 @@ module RailsNinja
     def request_input(schema_class)
       path = decode_parameters(schema_class, request.path_parameters)
       query = decode_parameters(schema_class, request.query_parameters)
-      body = if FORM_MEDIA_TYPES.include?(request.media_type)
+      body = if request.media_type == "multipart/form-data"
+               decode_parameters(schema_class, multipart_parameters(schema_class))
+             elsif FORM_MEDIA_TYPES.include?(request.media_type)
                decode_parameters(schema_class, request.request_parameters)
              else
                request.request_parameters.deep_symbolize_keys
              end
 
       path.merge(query).merge(body)
+    end
+
+    # Multipart has no arrays: a list field arrives as one part per element.
+    # The OpenAPI spec and browser FormData repeat the bare name (`files`),
+    # which Rack collapses to the last part; Rails-style `files[]` also arrives.
+    # Fold bare repeats into arrays so both shapes work.
+    def multipart_parameters(schema_class)
+      list_names = schema_class._fields.select { |_, field| field.type.is_a?(Array) }.keys.map(&:to_s)
+      return request.request_parameters if list_names.empty?
+
+      request.body.rewind
+      raw = Rack::Multipart.parse_multipart(request.env, ListAwareQueryParser.new(list_names)) || {}
+      ActionDispatch::Request::Utils.normalize_encode_params(raw.to_h)
+    end
+
+    class ListAwareQueryParser < Rack::QueryParser
+      def initialize(list_names)
+        super(Rack::QueryParser::Params, Rack::Utils.param_depth_limit)
+        @list_names = list_names
+      end
+
+      def normalize_params(params, name, value, _depth = nil)
+        return super unless @list_names.include?(name)
+
+        (params[name] ||= []) << value
+        params
+      end
     end
 
     def decode_parameters(schema_class, parameters)
