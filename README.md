@@ -103,8 +103,8 @@ end
 ```
 
 Fields are required by default. Available scalar types are `String`, `Int`,
-`Float`, and `Boolean` under `RailsNinja::Types`. A field may also contain a
-nested schema or a one-element array of a scalar or schema.
+`Float`, `Boolean`, and `File` under `RailsNinja::Types`. A field may also
+contain a nested schema or a one-element array of a scalar or schema.
 
 JSON input is strictly type-checked. Canonical path, query, and form values are
 decoded first, so an integer query value such as `"20"` becomes `20`. Invalid
@@ -174,6 +174,36 @@ end
 
 Only the `200` schema is serialized automatically. Other statuses must be
 committed with `render_json` or `head`.
+
+### File uploads
+
+`RailsNinja::Types::File` accepts a `multipart/form-data` part and hands the
+handler the `ActionDispatch::Http::UploadedFile` untouched:
+
+```ruby
+schema :AvatarIn do
+  field :avatar, RailsNinja::Types::File
+  field :caption, RailsNinja::Types::String, required: false
+end
+
+post "/avatars", request: AvatarIn
+def create_avatar
+  user.avatar.attach(io: params[:avatar], filename: params[:avatar].original_filename)
+  head 201
+end
+```
+
+A missing file fails validation like any other required field, and a text value
+sent for a file field returns `422`. Use `[RailsNinja::Types::File]` for
+multiple parts under the same name.
+
+An endpoint whose request schema contains a file anywhere in its tree is
+documented as `multipart/form-data` with `format: binary`, so the Swagger UI
+renders a file picker; every other request body stays `application/json`. Only
+`POST`, `PUT`, and `PATCH` read a request body, so file fields belong there.
+
+Size and content-type limits are not part of the schema — enforce them in a
+`before_action` or in the handler.
 
 ## Callbacks, headers, and tags
 
