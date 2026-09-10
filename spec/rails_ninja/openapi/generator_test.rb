@@ -193,7 +193,7 @@ class GeneratorTest < Minitest::Test
 
     assert_equal ["multipart/form-data"], content.keys
     assert_equal({ "$ref" => "#/components/schemas/AvatarIn" }, content["multipart/form-data"][:schema])
-    assert_equal({ type: "string", format: "binary", title: "Avatar" },
+    assert_equal({ contentMediaType: "application/octet-stream", title: "Avatar" },
                  spec[:components][:schemas]["AvatarIn"][:properties]["avatar"])
   end
 
@@ -202,8 +202,17 @@ class GeneratorTest < Minitest::Test
     content = spec[:paths]["/reports"]["post"][:requestBody][:content]
 
     assert_equal ["multipart/form-data"], content.keys
-    assert_equal({ type: "string", format: "binary" },
+    assert_equal({ contentMediaType: "application/octet-stream" },
                  spec[:components][:schemas]["AttachmentIn"][:properties]["files"][:items])
+  end
+
+  def test_openapi_30_describes_files_with_format_binary_only
+    spec = RailsNinja::OpenAPI::Generator.new(UploadGeneratorTestApi, openapi_version: "3.0.3").to_hash
+    avatar = spec[:components][:schemas]["AvatarIn"][:properties]["avatar"]
+
+    # contentMediaType is a 3.1 keyword; a 3.0 document must not carry it.
+    assert_equal({ type: "string", format: "binary", title: "Avatar" }, avatar)
+    assert_equal ["multipart/form-data"], spec[:paths]["/avatars"]["post"][:requestBody][:content].keys
   end
 
   def test_request_body_without_a_file_field_stays_json

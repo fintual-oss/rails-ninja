@@ -198,9 +198,27 @@ sent for a file field returns `422`. Use `[RailsNinja::Types::File]` for
 multiple parts under the same name.
 
 An endpoint whose request schema contains a file anywhere in its tree is
-documented as `multipart/form-data` with `format: binary`, so the Swagger UI
-renders a file picker; every other request body stays `application/json`. Only
-`POST`, `PUT`, and `PATCH` read a request body, so file fields belong there.
+documented as `multipart/form-data`; every other request body stays
+`application/json`. Only `POST`, `PUT`, and `PATCH` read a request body, so file
+fields belong there.
+
+The binary part itself is spelled per target version. OpenAPI 3.0 has only
+`format: binary`; 3.1 dropped it and describes raw binary with JSON Schema's
+`contentMediaType` and no `type` at all, since binary data sits outside the type
+system:
+
+```jsonc
+// 3.0.x
+{ "type": "string", "format": "binary" }
+// 3.1.x and 3.2.x
+{ "contentMediaType": "application/octet-stream" }
+```
+
+Omitting `type` is load-bearing rather than tidy. Per the Encoding Object's
+defaults, a `type: string` part with no `contentEncoding` defaults to
+`text/plain`, and a default that disagrees with `contentMediaType` causes the
+`contentMediaType` to be ignored — the part would be documented as text. With
+`type` absent the default is `application/octet-stream`.
 
 Size and content-type limits are not part of the schema — enforce them in a
 `before_action` or in the handler.
