@@ -1,0 +1,122 @@
+# frozen_string_literal: true
+
+# rubocop:disable RSpecRails/MinitestAssertions
+
+require "test_helper"
+require "digest"
+
+class UploadApi < RailsNinja::API
+  title "Upload API"
+  version "1.0"
+
+  schema :AvatarIn do
+    field :avatar, RailsNinja::Types::File
+    field :caption, RailsNinja::Types::String, required: false
+  end
+
+  schema :AttachmentsIn do
+    field :files, [RailsNinja::Types::File]
+  end
+
+  post "/avatars", request: AvatarIn
+  def create_avatar
+    avatar = params[:avatar]
+    render_json({
+      filename: avatar.original_filename,
+      content_type: avatar.content_type,
+      body: avatar.read,
+      caption: params[:caption],
+    })
+  end
+
+  post "/photos", request: AvatarIn
+  def create_photo
+    photo = params[:avatar]
+    bytes = photo.read
+
+    render_json({
+      content_type: photo.content_type,
+      bytesize: bytes.bytesize,
+      encoding: bytes.encoding.name,
+      digest: Digest::SHA256.hexdigest(bytes),
+      magic: bytes.byteslice(0, 3).unpack1("H*"),
+    })
+  end
+
+  post "/attachments", request: AttachmentsIn
+  def create_attachments
+    render_json({ filenames: params[:files].map(&:original_filename) })
+  end
+end
+
+class UploadIntegrationTest < Minitest::Test
+  include Rack::Test::Methods
+
+  FIXTURE = File.expand_path("../../fixtures/hello.txt", __dir__)
+  IMAGE = File.expand_path("../../fixtures/pikachu.jpg", __dir__)
+
+  def app
+    UploadApi
+  end
+
+  def test_multipart_upload_reaches_the_handler
+    post "/avatars", { "avatar" => Rack::Test::UploadedFile.new(FIXTURE, "text/plain"), "caption" => "hi" }
+
+    assert_equal 200, last_response.status
+    body = MultiJson.load(last_response.body, symbolize_keys: true)
+    assert_equal "hello.txt", body[:filename]
+    assert_equal "text/plain", body[:content_type]
+    assert_equal "hello ninja\n", body[:body]
+    assert_equal "hi", body[:caption]
+  end
+
+  def test_optional_fields_may_be_omitted
+    post "/avatars", { "avatar" => Rack::Test::UploadedFile.new(FIXTURE, "text/plain") }
+
+    assert_equal 200, last_response.status
+    assert_nil MultiJson.load(last_response.body, symbolize_keys: true)[:caption]
+  end
+
+  def test_missing_file_is_rejected
+    post "/avatars", { "caption" => "hi" }
+
+    assert_equal 422, last_response.status
+    assert_equal ["avatar is required"], MultiJson.load(last_response.body, symbolize_keys: true)[:errors]
+  end
+
+  def test_text_value_in_a_file_field_is_rejected
+    post "/avatars", { "avatar" => "not-a-file" }
+
+    assert_equal 422, last_response.status
+    assert_equal ["avatar: Expected File, got String"],
+                 MultiJson.load(last_response.body, symbolize_keys: true)[:errors]
+  end
+
+  def test_binary_upload_arrives_byte_for_byte
+    post "/photos", { "avatar" => Rack::Test::UploadedFile.new(IMAGE, "image/jpeg") }
+
+    assert_equal 200, last_response.status
+    body = MultiJson.load(last_response.body, symbolize_keys: true)
+    assert_equal "image/jpeg", body[:content_type]
+    assert_equal File.size(IMAGE), body[:bytesize]
+    assert_equal Digest::SHA256.file(IMAGE).hexdigest, body[:digest]
+    # A UTF-8 tempfile would corrupt the bytes of any non-text upload.
+    assert_equal "ASCII-8BIT", body[:encoding]
+    assert_equal "ffd8ff", body[:magic]
+  end
+
+  def test_list_of_files
+    post "/attachments", {
+      "files" => [
+        Rack::Test::UploadedFile.new(FIXTURE, "text/plain"),
+        Rack::Test::UploadedFile.new(FIXTURE, "text/plain"),
+      ],
+    }
+
+    assert_equal 200, last_response.status
+    body = MultiJson.load(last_response.body, symbolize_keys: true)
+    assert_equal %w[hello.txt hello.txt], body[:filenames]
+  end
+end
+
+# rubocop:enable RSpecRails/MinitestAssertions
