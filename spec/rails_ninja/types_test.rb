@@ -22,17 +22,15 @@ class TypesTest < Minitest::Test
   end
 
   def test_file_accepts_anything_with_the_uploaded_file_interface
-    uploaded = ActionDispatch::Http::UploadedFile.new(
-      tempfile: Tempfile.new("avatar"),
-      filename: "avatar.png",
-      type: "image/png"
-    )
+    Tempfile.create("avatar") do |tempfile|
+      uploaded = ActionDispatch::Http::UploadedFile.new(tempfile: tempfile, filename: "avatar.png", type: "image/png")
 
-    assert RailsNinja::Types::File.valid?(uploaded)
-    assert RailsNinja::Types::File.valid?(Rack::Test::UploadedFile.new(__FILE__, "text/plain"))
+      assert RailsNinja::Types::File.valid?(uploaded)
+      assert RailsNinja::Types::File.valid?(Rack::Test::UploadedFile.new(__FILE__, "text/plain"))
 
-    refute RailsNinja::Types::File.valid?("avatar.png")
-    refute RailsNinja::Types::File.valid?(Tempfile.new("avatar"))
+      refute RailsNinja::Types::File.valid?("avatar.png")
+      refute RailsNinja::Types::File.valid?(tempfile)
+    end
   end
 
   def test_scalars_expose_their_openapi_schemas

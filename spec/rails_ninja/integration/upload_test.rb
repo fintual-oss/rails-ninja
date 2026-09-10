@@ -53,7 +53,8 @@ class UploadIntegrationTest < Minitest::Test
   include Rack::Test::Methods
 
   FIXTURE = File.expand_path("../../fixtures/hello.txt", __dir__)
-  IMAGE = File.expand_path("../../fixtures/pikachu.jpg", __dir__)
+  # JPEG magic number followed by non-UTF-8 noise.
+  IMAGE_BYTES = ("\xFF\xD8\xFF\xE0".b + Random.new(42).bytes(4096)).freeze
 
   def app
     UploadApi
@@ -93,13 +94,17 @@ class UploadIntegrationTest < Minitest::Test
   end
 
   def test_binary_upload_arrives_byte_for_byte
-    post "/photos", { "avatar" => Rack::Test::UploadedFile.new(IMAGE, "image/jpeg") }
+    Tempfile.create(["photo", ".jpg"], binmode: true) do |image|
+      image.write(IMAGE_BYTES)
+      image.flush
+      post "/photos", { "avatar" => Rack::Test::UploadedFile.new(image.path, "image/jpeg") }
+    end
 
     assert_equal 200, last_response.status
     body = MultiJson.load(last_response.body, symbolize_keys: true)
     assert_equal "image/jpeg", body[:content_type]
-    assert_equal File.size(IMAGE), body[:bytesize]
-    assert_equal Digest::SHA256.file(IMAGE).hexdigest, body[:digest]
+    assert_equal IMAGE_BYTES.bytesize, body[:bytesize]
+    assert_equal Digest::SHA256.hexdigest(IMAGE_BYTES), body[:digest]
     # A UTF-8 tempfile would corrupt the bytes of any non-text upload.
     assert_equal "ASCII-8BIT", body[:encoding]
     assert_equal "ffd8ff", body[:magic]
