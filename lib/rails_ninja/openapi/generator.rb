@@ -132,14 +132,32 @@ module RailsNinja
       end
 
       def build_request_body(schema)
+        media_type = binary_type?(schema) ? "multipart/form-data" : "application/json"
+
         {
           required: true,
           content: {
-            "application/json" => {
+            media_type => {
               schema: schema_ref(schema),
             },
           },
         }
+      end
+
+      # A schema carrying a file anywhere in its tree can only be sent as
+      # multipart/form-data.
+      def binary_type?(type, seen = Set.new)
+        if type.is_a?(Schema::OneOf)
+          type.variants.any? { |variant| binary_type?(variant, seen) }
+        elsif type.is_a?(Array)
+          binary_type?(type.first, seen)
+        elsif type.is_a?(Class) && type <= Schema::Base
+          return false unless seen.add?(type)
+
+          type._fields.each_value.any? { |field| binary_type?(field.type, seen) }
+        else
+          type.is_a?(Class) && type <= Types::File
+        end
       end
 
       def schema_ref(type)

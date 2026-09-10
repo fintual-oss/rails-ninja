@@ -3,6 +3,7 @@
 # rubocop:disable RSpecRails/MinitestAssertions
 
 require "test_helper"
+require "tempfile"
 
 class TypesTest < Minitest::Test
   def test_scalars_only_accept_their_ruby_types
@@ -20,11 +21,26 @@ class TypesTest < Minitest::Test
     refute RailsNinja::Types::Boolean.valid?("true")
   end
 
+  def test_file_accepts_anything_with_the_uploaded_file_interface
+    uploaded = ActionDispatch::Http::UploadedFile.new(
+      tempfile: Tempfile.new("avatar"),
+      filename: "avatar.png",
+      type: "image/png"
+    )
+
+    assert RailsNinja::Types::File.valid?(uploaded)
+    assert RailsNinja::Types::File.valid?(Rack::Test::UploadedFile.new(__FILE__, "text/plain"))
+
+    refute RailsNinja::Types::File.valid?("avatar.png")
+    refute RailsNinja::Types::File.valid?(Tempfile.new("avatar"))
+  end
+
   def test_scalars_expose_their_openapi_schemas
     assert_equal({ type: "boolean" }, RailsNinja::Types::Boolean.openapi_schema)
     assert_equal({ type: "number" }, RailsNinja::Types::Float.openapi_schema)
     assert_equal({ type: "integer" }, RailsNinja::Types::Int.openapi_schema)
     assert_equal({ type: "string" }, RailsNinja::Types::String.openapi_schema)
+    assert_equal({ type: "string", format: "binary" }, RailsNinja::Types::File.openapi_schema)
   end
 end
 

@@ -50,6 +50,37 @@ class ServerGeneratorTestApi < RailsNinja::API
   def list_items; end
 end
 
+class UploadGeneratorTestApi < RailsNinja::API
+  title "Upload Test API"
+  version "1.0"
+
+  schema :AvatarIn do
+    field :avatar, RailsNinja::Types::File
+    field :caption, RailsNinja::Types::String, required: false
+  end
+
+  schema :AttachmentIn do
+    field :files, [RailsNinja::Types::File]
+  end
+
+  schema :ReportIn do
+    field :attachment, AttachmentIn
+  end
+
+  schema :NoteIn do
+    field :body, RailsNinja::Types::String
+  end
+
+  post "/avatars", request: AvatarIn
+  def create_avatar; end
+
+  post "/reports", request: ReportIn
+  def create_report; end
+
+  post "/notes", request: NoteIn
+  def create_note; end
+end
+
 class ApiKeySecurityGeneratorTestApi < RailsNinja::API
   openapi_security_scheme(
     :ApiKeyAuth,
@@ -153,6 +184,33 @@ class GeneratorTest < Minitest::Test
 
     assert post_op[:requestBody]
     assert post_op[:requestBody][:content]["application/json"]
+  end
+
+  def test_request_body_with_a_file_field_is_multipart
+    spec = RailsNinja::OpenAPI::Generator.new(UploadGeneratorTestApi).to_hash
+    post_op = spec[:paths]["/avatars"]["post"]
+    content = post_op[:requestBody][:content]
+
+    assert_equal ["multipart/form-data"], content.keys
+    assert_equal({ "$ref" => "#/components/schemas/AvatarIn" }, content["multipart/form-data"][:schema])
+    assert_equal({ type: "string", format: "binary", title: "Avatar" },
+                 spec[:components][:schemas]["AvatarIn"][:properties]["avatar"])
+  end
+
+  def test_request_body_with_a_nested_file_field_is_multipart
+    spec = RailsNinja::OpenAPI::Generator.new(UploadGeneratorTestApi).to_hash
+    content = spec[:paths]["/reports"]["post"][:requestBody][:content]
+
+    assert_equal ["multipart/form-data"], content.keys
+    assert_equal({ type: "string", format: "binary" },
+                 spec[:components][:schemas]["AttachmentIn"][:properties]["files"][:items])
+  end
+
+  def test_request_body_without_a_file_field_stays_json
+    spec = RailsNinja::OpenAPI::Generator.new(UploadGeneratorTestApi).to_hash
+    content = spec[:paths]["/notes"]["post"][:requestBody][:content]
+
+    assert_equal ["application/json"], content.keys
   end
 
   def test_response_schema_generated
