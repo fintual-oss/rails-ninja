@@ -52,6 +52,15 @@ class SchemaTest < Minitest::Test
     assert_equal [1, 2, 3], validated[:ids]
   end
 
+  def test_validate_non_object_for_nested_schema
+    address = Class.new(RailsNinja::Schema::Base) { field :city, RailsNinja::Types::String }
+    schema = Class.new(RailsNinja::Schema::Base) { field :address, address }
+
+    _validated, errors = schema.validate({ address: '{"city":"Santiago"}' })
+
+    assert_match(/address: Expected .*, got String/, errors.first)
+  end
+
   def test_validate_array_of_nested_schemas
     item = Class.new(RailsNinja::Schema::Base) do
       field :id, RailsNinja::Types::Int

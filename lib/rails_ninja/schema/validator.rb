@@ -77,6 +77,8 @@ module RailsNinja
       end
 
       def validate_schema(value, type)
+        return [nil, [": Expected #{format_type(type)}, got #{value.class}"]] unless value.is_a?(Hash)
+
         result, errors = type.validate(value)
         [result, errors.map { |err| ".#{err}" }]
       end
