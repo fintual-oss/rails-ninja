@@ -220,7 +220,7 @@ class GeneratorTest < Minitest::Test
 
     assert_equal ["multipart/form-data"], content.keys
     assert_equal({ "$ref" => "#/components/schemas/AvatarIn" }, content["multipart/form-data"][:schema])
-    assert_equal({ contentMediaType: "application/octet-stream", title: "Avatar" },
+    assert_equal({ type: "string", format: "binary", title: "Avatar" },
                  spec[:components][:schemas]["AvatarIn"][:properties]["avatar"])
   end
 
@@ -228,7 +228,7 @@ class GeneratorTest < Minitest::Test
     spec = RailsNinja::OpenAPI::Generator.new(UploadGeneratorTestApi).to_hash
 
     assert_equal ["multipart/form-data"], spec[:paths]["/attachments"]["post"][:requestBody][:content].keys
-    assert_equal({ contentMediaType: "application/octet-stream" },
+    assert_equal({ type: "string", format: "binary" },
                  spec[:components][:schemas]["AttachmentIn"][:properties]["files"][:items])
   end
 
@@ -247,13 +247,13 @@ class GeneratorTest < Minitest::Test
     assert_match(/query parameters/, error.message)
   end
 
-  def test_openapi_30_describes_files_with_format_binary_only
-    spec = RailsNinja::OpenAPI::Generator.new(UploadGeneratorTestApi, openapi_version: "3.0.3").to_hash
-    avatar = spec[:components][:schemas]["AvatarIn"][:properties]["avatar"]
+  def test_files_are_spelled_the_same_on_every_openapi_version
+    %w[3.0.3 3.1.0 3.2.0].each do |version|
+      spec = RailsNinja::OpenAPI::Generator.new(UploadGeneratorTestApi, openapi_version: version).to_hash
 
-    # contentMediaType is a 3.1 keyword; a 3.0 document must not carry it.
-    assert_equal({ type: "string", format: "binary", title: "Avatar" }, avatar)
-    assert_equal ["multipart/form-data"], spec[:paths]["/avatars"]["post"][:requestBody][:content].keys
+      assert_equal({ type: "string", format: "binary", title: "Avatar" },
+                   spec[:components][:schemas]["AvatarIn"][:properties]["avatar"])
+    end
   end
 
   def test_request_body_without_a_file_field_stays_json

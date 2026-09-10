@@ -204,23 +204,16 @@ fields (or a top-level list) of a `POST`, `PUT`, or `PATCH` request schema:
 multipart cannot carry a file inside a nested object, and responses are always
 JSON. The generator raises for a file anywhere else.
 
-The binary part itself is spelled per target version. OpenAPI 3.0 has only
-`format: binary`; 3.1 dropped it and describes raw binary with JSON Schema's
-`contentMediaType` and no `type` at all, since binary data sits outside the type
-system:
+A file field is documented as `{ "type": "string", "format": "binary" }` on
+every OpenAPI version. OpenAPI 3.1+ prescribes `contentMediaType` with no
+`type` instead, but client tooling still keys off `format: binary`:
+openapi-generator before 7.23.0 turns the 3.1 form into an untyped value, and
+Swagger UI renders a list of such files as text inputs. Every tool tested
+accepts `format: binary` in a 3.1 or 3.2 document. Emitting `contentMediaType`
+for 3.1+ is planned once the tooling catches up.
 
-```jsonc
-// 3.0.x
-{ "type": "string", "format": "binary" }
-// 3.1.x and 3.2.x
-{ "contentMediaType": "application/octet-stream" }
-```
-
-Omitting `type` is load-bearing rather than tidy. Per the Encoding Object's
-defaults, a `type: string` part with no `contentEncoding` defaults to
-`text/plain`, and a default that disagrees with `contentMediaType` causes the
-`contentMediaType` to be ignored — the part would be documented as text. With
-`type` absent the default is `application/octet-stream`.
+Note that openapi-generator cannot parse a 3.2.0 document at all yet; pass
+`OPENAPI_VERSION=3.0.3` or `3.1.0` for it.
 
 Size and content-type limits are not part of the schema — enforce them in a
 `before_action` or in the handler.

@@ -8,14 +8,12 @@ module RailsNinja
           value.respond_to?(:original_filename) && value.respond_to?(:read)
         end
 
-        # Raw binary sits outside JSON Schema's type system, so OpenAPI 3.1+
-        # describes it with contentMediaType and no `type`: a `type: string`
-        # part with no contentEncoding defaults to text/plain, which would
-        # contradict this keyword and get it discarded. The generator rewrites
-        # this to `type: string, format: binary` for 3.0, which predates
-        # contentMediaType.
+        # OpenAPI 3.1+ prescribes `contentMediaType` with no `type` for raw
+        # binary, but client tooling (openapi-generator < 7.23, Swagger UI for
+        # arrays) still keys off `format: binary`, so emit that on every version.
+        # TODO: emit contentMediaType for 3.1+ once the tooling catches up.
         def openapi_schema
-          { contentMediaType: "application/octet-stream" }
+          { type: "string", format: "binary" }
         end
       end
     end

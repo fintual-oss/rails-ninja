@@ -190,20 +190,8 @@ module RailsNinja
         elsif type <= Schema::Base
           { "$ref" => "#/components/schemas/#{schema_name(type)}" }
         else
-          primitive_schema(type)
+          SchemaRef.primitive_type(type)
         end
-      end
-
-      # contentMediaType arrives with OpenAPI 3.1; a 3.0 document spells the
-      # same bytes `type: string, format: binary`.
-      def primitive_schema(type)
-        return { type: "string", format: "binary" } if openapi_30? && binary_type?(type)
-
-        SchemaRef.primitive_type(type)
-      end
-
-      def openapi_30?
-        @openapi_version.start_with?("3.0")
       end
 
       def discriminator_mapping(one_of)

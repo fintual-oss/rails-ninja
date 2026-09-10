@@ -38,7 +38,7 @@ class TypesTest < Minitest::Test
     assert_equal({ type: "number" }, RailsNinja::Types::Float.openapi_schema)
     assert_equal({ type: "integer" }, RailsNinja::Types::Int.openapi_schema)
     assert_equal({ type: "string" }, RailsNinja::Types::String.openapi_schema)
-    assert_equal({ contentMediaType: "application/octet-stream" }, RailsNinja::Types::File.openapi_schema)
+    assert_equal({ type: "string", format: "binary" }, RailsNinja::Types::File.openapi_schema)
   end
 end
 
