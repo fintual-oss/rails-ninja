@@ -195,12 +195,14 @@ end
 
 A missing file fails validation like any other required field, and a text value
 sent for a file field returns `422`. Use `[RailsNinja::Types::File]` for
-multiple parts under the same name.
+multiple parts repeated under the same name (`files`; Rails' `files[]` also
+works).
 
-An endpoint whose request schema contains a file anywhere in its tree is
-documented as `multipart/form-data`; every other request body stays
-`application/json`. Only `POST`, `PUT`, and `PATCH` read a request body, so file
-fields belong there.
+A request schema with a file field is documented as `multipart/form-data`;
+every other request body stays `application/json`. Files must be top-level
+fields (or a top-level list) of a `POST`, `PUT`, or `PATCH` request schema:
+multipart cannot carry a file inside a nested object, and responses are always
+JSON. The generator raises for a file anywhere else.
 
 The binary part itself is spelled per target version. OpenAPI 3.0 has only
 `format: binary`; 3.1 dropped it and describes raw binary with JSON Schema's

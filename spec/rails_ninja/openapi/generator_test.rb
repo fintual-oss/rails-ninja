@@ -63,10 +63,6 @@ class UploadGeneratorTestApi < RailsNinja::API
     field :files, [RailsNinja::Types::File]
   end
 
-  schema :ReportIn do
-    field :attachment, AttachmentIn
-  end
-
   schema :NoteIn do
     field :body, RailsNinja::Types::String
   end
@@ -74,11 +70,42 @@ class UploadGeneratorTestApi < RailsNinja::API
   post "/avatars", request: AvatarIn
   def create_avatar; end
 
-  post "/reports", request: ReportIn
-  def create_report; end
+  post "/attachments", request: AttachmentIn
+  def create_attachments; end
 
   post "/notes", request: NoteIn
   def create_note; end
+end
+
+class NestedFileGeneratorTestApi < RailsNinja::API
+  schema :FileIn do
+    field :file, RailsNinja::Types::File
+  end
+
+  schema :ReportIn do
+    field :attachment, FileIn
+  end
+
+  post "/reports", request: ReportIn
+  def create_report; end
+end
+
+class FileResponseGeneratorTestApi < RailsNinja::API
+  schema :FileOut do
+    field :file, RailsNinja::Types::File
+  end
+
+  get "/download", response: FileOut
+  def download; end
+end
+
+class FileQueryGeneratorTestApi < RailsNinja::API
+  schema :FileIn do
+    field :file, RailsNinja::Types::File
+  end
+
+  get "/search", request: FileIn
+  def search; end
 end
 
 class ApiKeySecurityGeneratorTestApi < RailsNinja::API
@@ -197,13 +224,27 @@ class GeneratorTest < Minitest::Test
                  spec[:components][:schemas]["AvatarIn"][:properties]["avatar"])
   end
 
-  def test_request_body_with_a_nested_file_field_is_multipart
+  def test_list_of_files_is_an_array_of_binary_items
     spec = RailsNinja::OpenAPI::Generator.new(UploadGeneratorTestApi).to_hash
-    content = spec[:paths]["/reports"]["post"][:requestBody][:content]
 
-    assert_equal ["multipart/form-data"], content.keys
+    assert_equal ["multipart/form-data"], spec[:paths]["/attachments"]["post"][:requestBody][:content].keys
     assert_equal({ contentMediaType: "application/octet-stream" },
                  spec[:components][:schemas]["AttachmentIn"][:properties]["files"][:items])
+  end
+
+  def test_file_below_the_top_level_of_a_request_schema_is_rejected
+    error = assert_raises(RailsNinja::Error) { RailsNinja::OpenAPI::Generator.new(NestedFileGeneratorTestApi).to_hash }
+    assert_match(/top-level fields/, error.message)
+  end
+
+  def test_file_in_a_response_schema_is_rejected
+    error = assert_raises(RailsNinja::Error) { RailsNinja::OpenAPI::Generator.new(FileResponseGeneratorTestApi).to_hash }
+    assert_match(/serialized as JSON/, error.message)
+  end
+
+  def test_file_in_a_query_schema_is_rejected
+    error = assert_raises(RailsNinja::Error) { RailsNinja::OpenAPI::Generator.new(FileQueryGeneratorTestApi).to_hash }
+    assert_match(/query parameters/, error.message)
   end
 
   def test_openapi_30_describes_files_with_format_binary_only

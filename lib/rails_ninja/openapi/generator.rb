@@ -103,6 +103,7 @@ module RailsNinja
         return { "200" => { description: "Successful response" } } if endpoint.responses_map.empty?
 
         endpoint.responses_map.each_with_object({}) do |(status, schema), out|
+          reject_binary!(schema, "response schemas are serialized as JSON")
           schema_node = if schema.is_a?(Array)
                           { type: "array", items: schema_ref(schema.first) }
                         else
@@ -133,6 +134,12 @@ module RailsNinja
 
       def build_request_body(schema)
         media_type = binary_type?(schema) ? "multipart/form-data" : "application/json"
+        # A nested object is sent as a JSON part, which cannot carry a file.
+        schema._fields.each_value do |field|
+          next if scalar_field?(field.type)
+
+          reject_binary!(field.type, "files must be top-level fields of the request schema")
+        end
 
         {
           required: true,
@@ -144,8 +151,16 @@ module RailsNinja
         }
       end
 
-      # A schema carrying a file anywhere in its tree can only be sent as
-      # multipart/form-data.
+      def scalar_field?(type)
+        type = type.first if type.is_a?(Array)
+        type.is_a?(Class) && type <= Types::BaseScalar
+      end
+
+      def reject_binary!(type, reason)
+        raise Error, "#{type.inspect} contains RailsNinja::Types::File: #{reason}" if binary_type?(type)
+      end
+
+      # A schema carrying a file can only be sent as multipart/form-data.
       def binary_type?(type, seen = Set.new)
         if type.is_a?(Schema::OneOf)
           type.variants.any? { |variant| binary_type?(variant, seen) }
@@ -210,6 +225,7 @@ module RailsNinja
         return [] unless endpoint.request_schema
 
         endpoint.request_schema._fields.map do |name, field|
+          reject_binary!(field.type, "query parameters cannot carry a file; use POST, PUT, or PATCH")
           { name: name.to_s, in: "query", required: field.required, schema: schema_ref(field.type) }
         end
       end
