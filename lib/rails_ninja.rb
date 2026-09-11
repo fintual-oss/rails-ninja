@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "action_controller/metal"
+require "active_support/core_ext/array/wrap"
 require "active_support/core_ext/enumerable"
 require "rack"
 require "multi_json"
@@ -9,6 +10,7 @@ require_relative "rails_ninja/version"
 require_relative "rails_ninja/errors"
 require_relative "rails_ninja/types/base_scalar"
 require_relative "rails_ninja/types/boolean"
+require_relative "rails_ninja/types/file"
 require_relative "rails_ninja/types/float"
 require_relative "rails_ninja/types/int"
 require_relative "rails_ninja/types/string"

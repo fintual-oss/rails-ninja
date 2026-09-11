@@ -132,14 +132,32 @@ module RailsNinja
       end
 
       def build_request_body(schema)
-        {
-          required: true,
-          content: {
-            "application/json" => {
-              schema: schema_ref(schema),
-            },
-          },
-        }
+        multipart = schema._fields.values.any? { |f| file_type?(f.type) }
+        reject_nested_files!(schema)
+        media_type = multipart ? "multipart/form-data" : "application/json"
+
+        { required: true, content: { media_type => { schema: schema_ref(schema) } } }
+      end
+
+      def file_type?(type)
+        type = type.first if type.is_a?(Array)
+        type.is_a?(Class) && type <= Types::File
+      end
+
+      # Nested objects travel as JSON strings inside multipart, which cannot carry a file.
+      def reject_nested_files!(schema, path = [], seen = Set.new)
+        return unless seen.add?(schema)
+
+        schema._fields.each do |name, field|
+          nested = Array(field.type).first
+          next unless nested.is_a?(Class) && nested <= Schema::Base
+
+          if nested._fields.values.any? { |f| file_type?(f.type) }
+            raise Error, "File fields are only supported at the top level of a request schema " \
+                         "(found under #{(path + [name]).join('.')})"
+          end
+          reject_nested_files!(nested, path + [name], seen)
+        end
       end
 
       def schema_ref(type)

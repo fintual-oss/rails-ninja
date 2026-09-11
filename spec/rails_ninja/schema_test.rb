@@ -13,6 +13,14 @@ class SchemaTest < Minitest::Test
     end
   end
 
+  def test_validate_rejects_non_object_input
+    schema = Class.new(RailsNinja::Schema::Base) { field :title, RailsNinja::Types::String }
+
+    _, errors = schema.validate("not an object")
+
+    assert_equal ["Expected object, got String"], errors
+  end
+
   def test_field_registration
     assert_equal 3, @schema._fields.size
     assert_equal :name, @schema._fields[:name].name

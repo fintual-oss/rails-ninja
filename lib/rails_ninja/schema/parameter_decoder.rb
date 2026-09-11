@@ -8,9 +8,12 @@ module RailsNinja
 
       attr_reader :schema_class, :data
 
-      def initialize(schema_class, data)
+      # wrap_arrays: treat a lone value as a one-element list. Only safe for
+      # multipart, the one source where repeated names are preserved.
+      def initialize(schema_class, data, wrap_arrays: false)
         @schema_class = schema_class
         @data = data || {}
+        @wrap_arrays = wrap_arrays
       end
 
       def call
@@ -26,9 +29,13 @@ module RailsNinja
 
       def decode_value(value, type)
         if type.is_a?(Array)
+          value = Array.wrap(value) if @wrap_arrays
           value.is_a?(Array) ? value.map { |item| decode_value(item, type.first) } : value
         elsif type.is_a?(Class) && type <= Schema::Base
-          value.is_a?(Hash) ? self.class.new(type, value).call : value
+          # JSON already carries native types: validate it as-is, no form coercion.
+          return decode_json_object(value) if value.is_a?(::String)
+
+          value.is_a?(Hash) ? self.class.new(type, value, wrap_arrays: @wrap_arrays).call : value
         elsif type.is_a?(Class) && type <= Types::BaseScalar
           decode_scalar(value, type)
         else
@@ -45,6 +52,13 @@ module RailsNinja
         when "boolean" then decode_boolean(value)
         else value
         end
+      end
+
+      # OpenAPI clients send nested objects in multipart/form bodies as JSON strings.
+      def decode_json_object(value)
+        MultiJson.load(value)
+      rescue MultiJson::ParseError
+        value
       end
 
       def decode_integer(value)

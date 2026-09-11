@@ -5,7 +5,7 @@ Rails Ninja is a small Rails API framework inspired by
 request validation and response serialization, and generated OpenAPI
 documentation.
 
-Rails Ninja requires Ruby 3 or newer and Rails 7 or newer.
+Rails Ninja requires Ruby 3 or newer and Rails 7.1 or newer.
 
 ## Installation
 
@@ -103,8 +103,8 @@ end
 ```
 
 Fields are required by default. Available scalar types are `String`, `Int`,
-`Float`, and `Boolean` under `RailsNinja::Types`. A field may also contain a
-nested schema or a one-element array of a scalar or schema.
+`Float`, `Boolean`, and `File` under `RailsNinja::Types`. A field may also
+contain a nested schema or a one-element array of a scalar or schema.
 
 JSON input is strictly type-checked. Canonical path, query, and form values are
 decoded first, so an integer query value such as `"20"` becomes `20`. Invalid
@@ -113,6 +113,24 @@ into `params` as symbol keys.
 
 For `GET` and `DELETE`, a request schema is read from and documented as query
 parameters. `POST`, `PUT`, and `PATCH` use a request body.
+
+### File uploads
+
+```ruby
+schema :DocumentIn do
+  field :title, RailsNinja::Types::String
+  field :attachments, [RailsNinja::Types::File]
+  field :metadata, DocumentMetadata, required: false
+end
+```
+
+A request schema with a `File` field is documented as `multipart/form-data`
+and its values arrive as `ActionDispatch::Http::UploadedFile`. Arrays of files
+accept both `attachments[]` and repeated bare `attachments` parts, which is what
+OpenAPI generated clients send. Nested schema fields may be sent as JSON
+strings in their own part; they are validated with JSON types, not form
+coercion. `File` fields are only supported at the top level of a request
+schema and cannot appear in responses.
 
 Schemas may also be standalone:
 
@@ -270,7 +288,7 @@ bundle install
 bundle exec rake test
 ```
 
-CI tests every compatible combination of Action Pack and Active Support 7.0
+CI tests every compatible combination of Action Pack and Active Support 7.1
 through 8.1 with MRI Ruby 3.0 through 4.0. Each lane resolves the latest patch
 release in its minor series.
 

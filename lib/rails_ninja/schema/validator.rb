@@ -11,6 +11,8 @@ module RailsNinja
       end
 
       def call
+        return [{}, ["Expected object, got #{data.class}"]] unless data.respond_to?(:key?)
+
         errors = []
         validated = {}
 
@@ -77,6 +79,8 @@ module RailsNinja
       end
 
       def validate_schema(value, type)
+        return [nil, [": Expected object, got #{value.class}"]] unless value.respond_to?(:key?)
+
         result, errors = type.validate(value)
         [result, errors.map { |err| ".#{err}" }]
       end
