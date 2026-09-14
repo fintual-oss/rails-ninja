@@ -76,6 +76,61 @@ class GeneratorTest < Minitest::Test
     @generator = RailsNinja::OpenAPI::Generator.new(GeneratorTestApi)
   end
 
+  def test_request_body_with_file_field_is_multipart
+    upload_schema = Class.new(RailsNinja::Schema::Base) do
+      field :files, [RailsNinja::Types::File]
+    end
+    upload_schema.define_singleton_method(:name) { "UploadIn" }
+    api = Class.new(RailsNinja::API) do
+      post "/uploads", request: upload_schema
+      def upload; end
+    end
+
+    spec = RailsNinja::OpenAPI::Generator.new(api).to_hash
+    content = spec[:paths]["/uploads"]["post"][:requestBody][:content]
+
+    assert_equal ["multipart/form-data"], content.keys
+    assert_equal({ type: "string", format: "binary" }, spec[:components][:schemas]["UploadIn"][:properties]["files"][:items])
+  end
+
+  def test_file_subclass_is_multipart_and_nested_file_is_rejected
+    image = Class.new(RailsNinja::Types::File)
+    image.define_singleton_method(:name) { "Image" }
+    upload_schema = Class.new(RailsNinja::Schema::Base) { field :image, image }
+    upload_schema.define_singleton_method(:name) { "ImageIn" }
+    api = Class.new(RailsNinja::API) do
+      post "/images", request: upload_schema
+      def upload; end
+    end
+
+    content = RailsNinja::OpenAPI::Generator.new(api).to_hash[:paths]["/images"]["post"][:requestBody][:content]
+    assert_equal ["multipart/form-data"], content.keys
+
+    nested_schema = Class.new(RailsNinja::Schema::Base) { field :inner, upload_schema }
+    nested_schema.define_singleton_method(:name) { "NestedIn" }
+    nested_api = Class.new(RailsNinja::API) do
+      post "/nested", request: nested_schema
+      def upload; end
+    end
+
+    error = assert_raises(RailsNinja::Error) { RailsNinja::OpenAPI::Generator.new(nested_api).to_hash }
+    assert_match(/top level.*inner/, error.message)
+  end
+
+  def test_recursive_request_schema_generates
+    node = Class.new(RailsNinja::Schema::Base) { field :name, RailsNinja::Types::String }
+    node.define_singleton_method(:name) { "Node" }
+    node.field :children, [node], required: false
+    api = Class.new(RailsNinja::API) do
+      post "/nodes", request: node
+      def create; end
+    end
+
+    spec = RailsNinja::OpenAPI::Generator.new(api).to_hash
+
+    assert_equal ["application/json"], spec[:paths]["/nodes"]["post"][:requestBody][:content].keys
+  end
+
   def test_spec_structure
     spec = @generator.to_hash
 

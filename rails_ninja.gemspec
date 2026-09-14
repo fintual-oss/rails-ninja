@@ -26,10 +26,10 @@ Gem::Specification.new do |spec|
   end
   spec.require_paths = ["lib"]
 
-  spec.add_dependency "actionpack", ">= 7.0"
-  spec.add_dependency "activesupport", ">= 7.0"
+  spec.add_dependency "actionpack", ">= 7.1"
+  spec.add_dependency "activesupport", ">= 7.1"
   spec.add_dependency "multi_json", "~> 1.15"
-  spec.add_dependency "rack", ">= 2.0"
+  spec.add_dependency "rack", ">= 2.2.4"
 
   spec.add_development_dependency "minitest", ">= 5.0"
   spec.add_development_dependency "rack-test", ">= 2.0"

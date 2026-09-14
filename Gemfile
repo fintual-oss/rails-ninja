@@ -3,3 +3,6 @@
 source "https://rubygems.org"
 
 gemspec
+
+# json 3.0 dropped the positional options arg that activesupport 8.1.3.1 still passes to JSON.parse
+gem "json", "< 3"

@@ -336,6 +336,8 @@ module RailsNinja
 
       if errors.empty?
         params.merge!(validated)
+        # Mounted groups / included endpoints run on their own instance with its own params
+        @_ninja_handler_instance&.params&.merge!(validated)
         return
       end
 
@@ -347,13 +349,57 @@ module RailsNinja
     def request_input(schema_class)
       path = decode_parameters(schema_class, request.path_parameters)
       query = decode_parameters(schema_class, request.query_parameters)
-      body = if FORM_MEDIA_TYPES.include?(request.media_type)
+      body = if request.media_type == "multipart/form-data"
+               Schema::ParameterDecoder.new(schema_class, multipart_parameters(schema_class), wrap_arrays: true).call
+             elsif FORM_MEDIA_TYPES.include?(request.media_type)
                decode_parameters(schema_class, request.request_parameters)
              else
                request.request_parameters.deep_symbolize_keys
              end
 
       path.merge(query).merge(body)
+    end
+
+    # Rack keeps only the last part when a multipart name repeats without "[]",
+    # but OpenAPI clients send arrays exactly that way ("files", "files").
+    # Re-parse the body so repeated bare names accumulate into arrays.
+    module RepeatedMultipartNames
+      def normalize_params(params, name, value, *rest)
+        return super unless params.key?(name) && !name.include?("[")
+
+        existing = params[name]
+        params[name] = existing.is_a?(Array) ? existing << value : [existing, value]
+        params
+      end
+    end
+
+    def multipart_parameters(schema_class)
+      rails_params = request.request_parameters
+      io = request.env["rack.input"]
+      # Rails' parse is already complete unless a list field could have lost repeated parts
+      list_fields = schema_class._fields.values.any? { |f| f.type.is_a?(Array) }
+      return rails_params if io.nil? || rails_params.empty? || !list_fields
+
+      parser = Rack::Utils.default_query_parser.dup.extend(RepeatedMultipartNames)
+
+      raw = if (pairs = request.env["rack.request.form_pairs"])
+              params = parser.make_params
+              pairs.each { |name, value| parser.normalize_params(params, name, value) }
+              params.to_params_hash
+            elsif io.respond_to?(:rewind)
+              io.rewind
+              # parse_multipart replaces the tempfile cleanup list; keep the ones from Rails' parse
+              earlier_tempfiles = Array(request.env["rack.tempfiles"])
+              parsed = Rack::Multipart.parse_multipart(request.env, parser) || {}
+              request.env["rack.tempfiles"] = earlier_tempfiles | Array(request.env["rack.tempfiles"])
+              parsed
+            else
+              raise Error, "multipart bodies need Rack >= 3.1 or a rewindable rack.input " \
+                           "(wrap the app in Rack::RewindableInput::Middleware)"
+            end
+
+      # Same step Rails applies to POST params: turns Rack's file hashes into UploadedFile.
+      ActionDispatch::Request::Utils.normalize_encode_params(raw)
     end
 
     def decode_parameters(schema_class, parameters)
