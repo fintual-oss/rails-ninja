@@ -24,13 +24,13 @@ module RailsNinja
         required = []
 
         schema_class._fields.each do |name, field|
-          properties[name.to_s] = to_json_schema(field.type)
+          properties[name.to_s] = to_json_schema(field.type).merge(field.documentation)
           required << name.to_s if field.required
         end
 
         result = { type: "object", properties: properties }
         result[:required] = required if required.any?
-        result
+        result.merge(schema_class.openapi).deep_dup
       end
 
       def primitive_type(type)

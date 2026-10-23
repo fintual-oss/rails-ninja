@@ -3,6 +3,7 @@
 require "action_controller/metal"
 require "active_support/core_ext/array/wrap"
 require "active_support/core_ext/enumerable"
+require "active_support/core_ext/object/deep_dup"
 require "rack"
 require "multi_json"
 

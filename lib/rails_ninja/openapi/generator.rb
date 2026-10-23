@@ -33,10 +33,12 @@ module RailsNinja
           components: components,
         }
         spec[:servers] = [{ url: @api_class._server }] if @api_class._server
+        spec[:info][:description] = @api_class.description if @api_class.description
+        spec[:tags] = @api_class._openapi_tags if @api_class._openapi_tags.any?
         if @api_class._openapi_security.any?
           spec[:security] = @api_class._openapi_security.map { |name| { name => [] } }
         end
-        spec
+        spec.deep_dup
       end
 
       def to_json(*_args)
@@ -79,18 +81,22 @@ module RailsNinja
             body_verb = %w[get delete head].exclude?(verb)
 
             operation = { summary: endpoint.summary }
+            operation[:description] = endpoint.description if endpoint.description
             operation[:tags] = endpoint.tags if endpoint.tags&.any?
             operation[:responses] = build_responses(endpoint)
             # Deprecated aliases share a handler with the primary endpoint; only the
             # current path carries the operationId to keep it unique across the spec.
-            operation[:operationId] = build_operation_id(endpoint) unless endpoint.deprecated?
+            operation[:operationId] = endpoint.operation_id || build_operation_id(endpoint) unless endpoint.deprecated?
             operation[:deprecated] = true if endpoint.deprecated?
 
             if endpoint.request_schema && body_verb
               operation[:requestBody] = build_request_body(endpoint.request_schema)
+              if endpoint.request_description
+                operation[:requestBody][:description] = endpoint.request_description
+              end
             end
 
-            params = extract_path_params(path) + extract_header_params(endpoint)
+            params = extract_path_params(path, endpoint.path_params) + extract_header_params(endpoint)
             params += extract_query_params(endpoint) unless body_verb
             operation[:parameters] = params if params.any?
 
@@ -113,6 +119,9 @@ module RailsNinja
             description: response_description_for(status),
             content: { "application/json" => { schema: schema_node } },
           }
+          documentation = endpoint.response_documentation.fetch(status, {})
+          out[status.to_s].merge!(documentation.slice(:description, :headers))
+          out[status.to_s][:content]["application/json"].merge!(documentation.slice(:example, :examples))
         end
       end
 
@@ -188,9 +197,16 @@ module RailsNinja
         end
       end
 
-      def extract_path_params(path)
-        path.scan(/:(\w+)/).flatten.map do |param|
-          { name: param, in: "path", required: true, schema: { type: "string" } }
+      def extract_path_params(path, documentation)
+        names = path.scan(/:(\w+)/).flatten
+        unknown = documentation.keys - names
+        raise ArgumentError, "Unknown path parameter annotations: #{unknown.join(', ')}" if unknown.any?
+
+        names.map do |param|
+          metadata = documentation.fetch(param, {})
+          { name: param, in: "path", required: true,
+            schema: { type: "string" }.merge(metadata.fetch(:schema, {})) }
+            .merge(metadata.slice(:description, :example))
         end
       end
 
@@ -198,7 +214,9 @@ module RailsNinja
         return [] unless endpoint.request_schema
 
         endpoint.request_schema._fields.map do |name, field|
-          { name: name.to_s, in: "query", required: field.required, schema: schema_ref(field.type) }
+          { name: name.to_s, in: "query", required: field.required,
+            schema: schema_ref(field.type).merge(field.documentation.except(:description, :example)) }
+            .merge(field.documentation.slice(:description, :example))
         end
       end
 
@@ -207,6 +225,7 @@ module RailsNinja
 
         endpoint.header_params.map do |h|
           { name: h[:name], in: "header", required: h[:required], schema: h[:schema] }
+            .merge(h.slice(:description, :example))
         end
       end
 
@@ -261,16 +280,17 @@ module RailsNinja
         required = []
 
         schema_class._fields.each do |name, field|
-          property = schema_ref(field.type)
+          property = schema_ref(field.type).deep_dup
           property[:title] = schema_title(name)
           property[:enum] = field.enum if field.enum
+          property.merge!(field.documentation)
           properties[name.to_s] = property
           required << name.to_s if field.required
         end
 
         result = { type: "object", title: schema_name(schema_class), properties: properties }
         result[:required] = required if required.any?
-        result
+        result.merge(schema_class.openapi)
       end
 
       def schema_title(name)
