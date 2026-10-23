@@ -264,6 +264,73 @@ Deprecated paths remain routable and are marked as deprecated in OpenAPI.
 Set `server "https://api.example.com"` on an API to declare its server URL, or
 `docs false` to disable `/docs` and `/openapi.json`.
 
+## OpenAPI documentation in Ruby
+
+Declare descriptions, examples and parameter constraints next to the API schemas.
+The generator includes them in the JSON document without a separate overlay file.
+
+```ruby
+class InventoryApi < RailsNinja::API
+  title "Inventory API"
+  description "Read inventory records."
+  openapi_tag "Records", description: "Inventory records and their availability."
+
+  schema :Record, description: "One inventory record", example: { name: "Widget" } do
+    field :name, RailsNinja::Types::String,
+      description: "Display name", example: "Widget", openapi: { minLength: 1 }
+  end
+
+  schema :ReadError do
+    field :error, RailsNinja::Types::String, description: "Reason the read failed"
+  end
+
+  get "/records/:id",
+    operation_id: "getRecord",
+    summary: "Read an inventory record",
+    description: "Returns the record identified by the supplied ID.",
+    tags: ["Records"],
+    path_params: { id: { description: "Record ID", example: "123", schema: { pattern: "^[0-9]+$" } } },
+    responses: {
+      200 => Record,
+      429 => {
+        schema: ReadError,
+        description: "Wait before retrying the request.",
+        example: { error: "Too many requests" },
+        headers: { "Retry-After" => { description: "Seconds to wait", schema: { type: "integer" }, example: 1 } }
+      }
+    }
+  def read
+    # Fetch the record or render an error response.
+  end
+end
+```
+
+Schema classes can also declare `openapi description: ..., example: ...` inside
+their class body. Field `openapi:` accepts `format`, `pattern`, `minLength`,
+`maxLength`, `minimum`, `maximum`, `default`, `enum` and `oneOf`. These options
+describe constraints enforced by the application; they do not add runtime
+validation or change serialization. Field types and requiredness still come from
+the existing `field` declaration.
+
+GET, DELETE and HEAD request schemas supply query parameters. Their field
+descriptions and examples appear on the parameter, and their constraints appear
+in its schema. Header declarations accept `description:`, `example:` and
+`schema:` alongside `name:` and `required:`. Path annotations refer to the full
+mounted route, including parameters from a mount prefix. Path parameters remain
+required and retain their route names.
+
+For a request body, use `request_description:` on the endpoint. For each response,
+either keep the existing schema shorthand or supply a hash containing `schema:`
+and optional `description:`, `headers:` and `example:` or `examples:`. The two
+example forms are mutually exclusive. Named examples use OpenAPI Example Objects,
+for example `examples: { missing: { value: { error: "Not found" } } }`.
+Schemas can still be arrays or `one_of(...)` declarations.
+
+An explicit `operation_id:` keeps generated client method names stable when Ruby
+handler names change. Authors must choose unique IDs within each API document;
+deprecated route aliases omit the ID. API security descriptions belong in the
+existing `openapi_security_scheme` declaration.
+
 ## Static OpenAPI files
 
 Generate an OpenAPI 3.2 JSON file for every API:

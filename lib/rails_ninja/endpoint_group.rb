@@ -22,8 +22,9 @@ module RailsNinja
       end
 
       # Schema definition DSL
-      def schema(name, &block)
+      def schema(name, **documentation, &block)
         klass = Class.new(Schema::Base)
+        klass.openapi(**documentation)
         klass.class_eval(&block)
 
         # Register as a constant on this class so it's accessible by name

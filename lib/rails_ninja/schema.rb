@@ -4,14 +4,15 @@ module RailsNinja
   module Schema
     class Base
       class << self
-        def field(name, type, required: true, default: nil, enum: nil)
+        def field(name, type, required: true, default: nil, enum: nil, **documentation)
           validate_type!(type)
           _fields[name.to_sym] = Field.new(
             name: name.to_sym,
             type: type,
             required: required,
             default: default,
-            enum: enum
+            enum: enum,
+            **documentation
           )
         end
 
@@ -23,9 +24,18 @@ module RailsNinja
           @_fields ||= {}
         end
 
+        def openapi(**documentation)
+          unknown = documentation.keys - %i[description example]
+          raise ArgumentError, "Unsupported schema documentation keys: #{unknown.join(', ')}" if unknown.any?
+
+          @_openapi ||= {}
+          @_openapi.merge!(documentation.deep_dup)
+        end
+
         def inherited(subclass)
           super
           subclass.instance_variable_set(:@_fields, _fields.dup)
+          subclass.instance_variable_set(:@_openapi, openapi.deep_dup)
         end
 
         def validate(data)

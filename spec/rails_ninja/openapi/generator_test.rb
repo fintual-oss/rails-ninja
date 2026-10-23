@@ -76,6 +76,261 @@ class GeneratorTest < Minitest::Test
     @generator = RailsNinja::OpenAPI::Generator.new(GeneratorTestApi)
   end
 
+  def test_schema_and_field_documentation_is_generated_from_declarations
+    api = Class.new(RailsNinja::API)
+    api.schema(:Documented, description: "A documented record", example: { enabled: false, code: "ABC" }) do
+      field :enabled, RailsNinja::Types::Boolean, description: "Whether enabled", example: false
+      field :code, RailsNinja::Types::String, description: "Record code", example: "ABC",
+        openapi: { pattern: "^[A-Z]+$", minLength: 1, maxLength: 10 }
+    end
+    schema = api::Documented
+    api.get "/record", response: schema
+    api.define_method(:read) { nil }
+
+    result = RailsNinja::OpenAPI::Generator.new(api).to_hash[:components][:schemas]["Documented"]
+
+    assert_equal({
+      type: "object", title: "Documented", description: "A documented record",
+      example: { enabled: false, code: "ABC" }, required: ["enabled", "code"],
+      properties: {
+        "enabled" => { type: "boolean", title: "Enabled", description: "Whether enabled", example: false },
+        "code" => { type: "string", title: "Code", description: "Record code", example: "ABC",
+                    pattern: "^[A-Z]+$", minLength: 1, maxLength: 10 }
+      }
+    }, result)
+    assert_equal({ enabled: false, code: "ABC" }, schema.serialize(enabled: false, code: "ABC"))
+    assert_equal [{ enabled: false, code: "ABC" }, []], schema.validate(enabled: false, code: "ABC")
+  end
+
+  def test_legacy_declarations_keep_the_same_operation_shape
+    operation = @generator.to_hash[:paths]["/items"]["post"]
+
+    assert_equal({
+      summary: "Create item", operationId: "create_item",
+      responses: { "200" => { description: "Successful response",
+                              content: { "application/json" => {
+                                schema: { "$ref" => "#/components/schemas/ItemOut" }
+                              } } } },
+      requestBody: { required: true, content: { "application/json" => {
+        schema: { "$ref" => "#/components/schemas/ItemIn" }
+      } } }
+    }, operation)
+  end
+
+  def test_documentation_preserves_openapi_versions
+    api = Class.new(RailsNinja::API)
+    api.schema(:VersionedRecord, description: "Record") do
+      field :name, RailsNinja::Types::String, example: "One"
+    end
+    api.get "/records", responses: { 200 => { schema: api::VersionedRecord, description: "Record found" } }
+    api.define_method(:read) { nil }
+
+    %w[3.0.3 3.1.0 3.2.0].each do |version|
+      spec = RailsNinja::OpenAPI::Generator.new(api, openapi_version: version).to_hash
+
+      assert_equal version, spec[:openapi]
+      assert_equal "Record", spec[:components][:schemas]["VersionedRecord"][:description]
+      assert_equal "Record found", spec[:paths]["/records"]["get"][:responses]["200"][:description]
+    end
+  end
+
+  def test_schema_documentation_is_copied_on_inheritance
+    parent = Class.new(RailsNinja::Schema::Base) do
+      openapi description: "Parent", example: { name: "One" }
+      field :name, RailsNinja::Types::String
+    end
+    child = Class.new(parent)
+    child.openapi(description: "Child")
+    child.openapi[:example][:name] = "Two"
+
+    assert_equal({ description: "Parent", example: { name: "One" } }, parent.openapi)
+    assert_equal({ description: "Child", example: { name: "Two" } }, child.openapi)
+  end
+
+  def test_query_header_and_path_documentation_preserves_parameter_identity
+    api = Class.new(RailsNinja::API)
+    api.schema(:Search) do
+      field :limit, RailsNinja::Types::Int, required: false, description: "Page size", example: 0,
+        openapi: { minimum: 0, maximum: 200, default: 40 }
+    end
+    api.get "/items/:id", request: api::Search,
+      path_params: { id: { description: "Item ID", example: "item:1", schema: { pattern: "^item:[0-9]+$" } } },
+      headers: [{ name: "X-Tenant", required: true, description: "Tenant ID", example: "abc",
+                  schema: { type: "string", minLength: 1 } }]
+    api.define_method(:read) { nil }
+
+    operation = RailsNinja::OpenAPI::Generator.new(api).to_hash[:paths]["/items/{id}"]["get"]
+
+    assert_equal [
+      { name: "id", in: "path", required: true, description: "Item ID", example: "item:1",
+        schema: { type: "string", pattern: "^item:[0-9]+$" } },
+      { name: "X-Tenant", in: "header", required: true, description: "Tenant ID", example: "abc",
+        schema: { type: "string", minLength: 1 } },
+      { name: "limit", in: "query", required: false, description: "Page size", example: 0,
+        schema: { type: "integer", minimum: 0, maximum: 200, default: 40 } }
+    ], operation[:parameters]
+  end
+
+  def test_operation_response_and_api_documentation
+    api = Class.new(RailsNinja::API)
+    api.title "Documented API"
+    api.description "Read records"
+    api.openapi_tag "Records", description: "Record reads"
+    api.schema(:ReadError) { field :error, RailsNinja::Types::String }
+    error = api::ReadError
+    api.get "/records", operation_id: "readRecords", description: "Read all records", tags: ["Records"],
+      responses: {
+        429 => { schema: error, description: "Wait before retrying", example: { error: "Too many requests" },
+                 headers: { "Retry-After" => { description: "Seconds to wait", schema: { type: "integer" }, example: 1 } } }
+      }
+    api.define_method(:read) { nil }
+
+    spec = RailsNinja::OpenAPI::Generator.new(api).to_hash
+    operation = spec[:paths]["/records"]["get"]
+
+    assert_equal "Read records", spec[:info][:description]
+    assert_equal [{ name: "Records", description: "Record reads" }], spec[:tags]
+    assert_equal "readRecords", operation[:operationId]
+    assert_equal "Read all records", operation[:description]
+    assert_equal({
+      "429" => {
+        description: "Wait before retrying",
+        headers: { "Retry-After" => { description: "Seconds to wait", schema: { type: "integer" }, example: 1 } },
+        content: { "application/json" => { schema: { "$ref" => "#/components/schemas/ReadError" },
+                                          example: { error: "Too many requests" } } }
+      }
+    }, operation[:responses])
+    assert_equal({ 429 => error }, api._endpoints.first.responses_map)
+  end
+
+  def test_multiple_response_examples_and_request_description
+    api = Class.new(RailsNinja::API)
+    api.schema(:Payload) { field :name, RailsNinja::Types::String }
+    schema = api::Payload
+    examples = { first: { value: [{ name: "One" }] }, second: { value: [{ name: "Two" }] } }
+    api.post "/records", request: schema, request_description: "New record",
+      responses: { 200 => { schema: [schema], examples: examples } }
+    api.define_method(:create) { nil }
+
+    operation = RailsNinja::OpenAPI::Generator.new(api).to_hash[:paths]["/records"]["post"]
+
+    assert_equal "New record", operation[:requestBody][:description]
+    assert_equal({ schema: { type: "array", items: { "$ref" => "#/components/schemas/Payload" } },
+                   examples: examples }, operation[:responses]["200"][:content]["application/json"])
+    assert_equal [schema], api._endpoints.first.response_schema
+  end
+
+  def test_documentation_does_not_mutate_or_leak_between_apis
+    parent = Class.new(RailsNinja::API)
+    parent.openapi_tag "Parent", description: "Parent records"
+    child = Class.new(parent)
+    child.openapi_tag "Child", description: "Child records"
+    parent.get "/records", responses: { 200 => RailsNinja::Types::String }
+    parent.define_method(:read) { "value" }
+    generator = RailsNinja::OpenAPI::Generator.new(parent)
+    first = generator.to_hash
+    first[:tags].first[:description] = "Changed"
+
+    assert_equal [{ name: "Parent", description: "Parent records" }], generator.to_hash[:tags]
+    assert_equal 2, child._openapi_tags.size
+    assert_equal 1, parent._openapi_tags.size
+  end
+
+  def test_unknown_field_schema_overrides_are_rejected
+    error = assert_raises(ArgumentError) do
+      Class.new(RailsNinja::Schema::Base) do
+        field :name, RailsNinja::Types::String, openapi: { type: "integer" }
+      end
+    end
+
+    assert_equal "Unsupported field OpenAPI keys: type", error.message
+  end
+
+  def test_unknown_path_parameter_annotations_are_rejected
+    api = Class.new(RailsNinja::API)
+    api.get "/records/:id", path_params: { wrong: { description: "Wrong name" } }
+    api.define_method(:read) { nil }
+
+    error = assert_raises(ArgumentError) { RailsNinja::OpenAPI::Generator.new(api).to_hash }
+
+    assert_equal "Unknown path parameter annotations: wrong", error.message
+  end
+
+  def test_response_examples_are_mutually_exclusive
+    error = assert_raises(ArgumentError) do
+      RailsNinja::Operation.new(verb: :get, path: "/", handler: :read, api_class: RailsNinja::API,
+        responses: { 200 => { schema: RailsNinja::Types::String, example: "one", examples: { two: { value: "two" } } } })
+    end
+
+    assert_equal "Response 200 cannot declare both example and examples", error.message
+  end
+
+  def test_rich_response_declarations_preserve_request_and_response_serialization
+    api = Class.new(RailsNinja::API)
+    api.schema(:Record) do
+      field :name, RailsNinja::Types::String, description: "Record name", example: "One",
+        openapi: { minLength: 3 }
+    end
+    api.post "/records", request: api::Record,
+      responses: { 200 => { schema: api::Record, description: "Created record" } }
+    api.define_method(:create) { { name: params[:name], internal: "hidden" } }
+
+    response = Rack::MockRequest.new(api).post("/records",
+      "CONTENT_TYPE" => "application/json", input: '{"name":"A"}')
+
+    assert_equal 200, response.status
+    assert_equal({ "name" => "A" }, MultiJson.load(response.body))
+  end
+
+  def test_mounted_path_metadata_and_deprecated_aliases
+    endpoint = Class.new(RailsNinja::Endpoint)
+    endpoint.get "/records/:id", deprecated_paths: "/old-records/:id", operation_id: "readRecord",
+      path_params: { tenant: { description: "Tenant" }, id: { example: "123" } }
+    endpoint.define_method(:read) { nil }
+    api = Class.new(RailsNinja::API)
+    api.mount endpoint, prefix: "/tenants/:tenant"
+
+    paths = RailsNinja::OpenAPI::Generator.new(api).to_hash[:paths]
+    operation = paths["/tenants/{tenant}/records/{id}"]["get"]
+
+    assert_equal "readRecord", operation[:operationId]
+    assert_equal [
+      { name: "tenant", in: "path", required: true, schema: { type: "string" }, description: "Tenant" },
+      { name: "id", in: "path", required: true, schema: { type: "string" }, example: "123" }
+    ], operation[:parameters]
+    refute paths["/tenants/{tenant}/old-records/{id}"]["get"].key?(:operationId)
+    assert_equal true, paths["/tenants/{tenant}/old-records/{id}"]["get"][:deprecated]
+  end
+
+  def test_response_union_registers_every_schema_and_keeps_null_example
+    api = Class.new(RailsNinja::API)
+    api.schema(:SingleError) { field :error, RailsNinja::Types::String }
+    api.schema(:ManyErrors) { field :errors, [RailsNinja::Types::String] }
+    api.get "/records", responses: {
+      422 => { schema: RailsNinja::Schema::OneOf.new([api::SingleError, api::ManyErrors]),
+               examples: { single: { value: { error: "Invalid" } } } }
+    }
+    api.define_method(:read) { nil }
+    api.schema(:OptionalRecord, example: nil) do
+      field :name, RailsNinja::Types::String, required: false, example: nil
+    end
+    api.get "/optional", response: api::OptionalRecord
+    api.define_method(:optional) { {} }
+
+    spec = RailsNinja::OpenAPI::Generator.new(api).to_hash
+
+    assert_equal %w[ManyErrors OptionalRecord SingleError], spec[:components][:schemas].keys.sort
+    assert_equal({ "oneOf" => [
+      { "$ref" => "#/components/schemas/SingleError" },
+      { "$ref" => "#/components/schemas/ManyErrors" }
+    ] }, spec[:paths]["/records"]["get"][:responses]["422"][:content]["application/json"][:schema])
+    optional = spec[:components][:schemas]["OptionalRecord"]
+    assert optional.key?(:example)
+    assert_nil optional[:example]
+    assert optional[:properties]["name"].key?(:example)
+    assert_nil optional[:properties]["name"][:example]
+  end
+
   def test_request_body_with_file_field_is_multipart
     upload_schema = Class.new(RailsNinja::Schema::Base) do
       field :files, [RailsNinja::Types::File]

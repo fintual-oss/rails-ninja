@@ -5,6 +5,33 @@
 require "test_helper"
 
 class OperationTest < Minitest::Test
+  def test_response_metadata_requires_a_schema
+    error = assert_raises(KeyError) do
+      RailsNinja::Operation.new(verb: :get, path: "/", handler: :read, api_class: RailsNinja::API,
+        responses: { 200 => { description: "Missing schema" } })
+    end
+
+    assert_equal :schema, error.key
+  end
+
+  def test_response_metadata_rejects_unknown_keys
+    error = assert_raises(ArgumentError) do
+      RailsNinja::Operation.new(verb: :get, path: "/", handler: :read, api_class: RailsNinja::API,
+        responses: { 200 => { schema: RailsNinja::Types::String, content: {} } })
+    end
+
+    assert_equal "Unsupported response 200 keys: content", error.message
+  end
+
+  def test_path_metadata_cannot_change_required_or_location
+    error = assert_raises(ArgumentError) do
+      RailsNinja::Operation.new(verb: :get, path: "/:id", handler: :read, api_class: RailsNinja::API,
+        path_params: { id: { required: false, in: "query" } })
+    end
+
+    assert_equal "Unsupported path parameter keys: required, in", error.message
+  end
+
   def test_endpoint_summary_from_handler
     endpoint = RailsNinja::Operation.new(
       verb: :get,

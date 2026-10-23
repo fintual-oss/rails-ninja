@@ -23,6 +23,20 @@ module RailsNinja
         @_title
       end
 
+      def description(value = nil)
+        @_description = value unless value.nil?
+        @_description
+      end
+
+      def openapi_tag(name, description:)
+        _openapi_tags.reject! { |tag| tag[:name] == name.to_s }
+        _openapi_tags << { name: name.to_s, description: description }
+      end
+
+      def _openapi_tags
+        @_openapi_tags ||= []
+      end
+
       def version(value = nil)
         if value
           @_version = value
@@ -85,6 +99,8 @@ module RailsNinja
         super
         subclass.instance_variable_set(:@_openapi_security_schemes, _openapi_security_schemes.transform_values(&:dup))
         subclass.instance_variable_set(:@_openapi_security, _openapi_security.dup)
+        subclass.instance_variable_set(:@_openapi_tags, _openapi_tags.deep_dup)
+        subclass.instance_variable_set(:@_description, description&.dup)
         RailsNinja.registered_apis << subclass
       end
 

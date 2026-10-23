@@ -5,6 +5,22 @@
 require "test_helper"
 
 class SchemaRefTest < Minitest::Test
+  def test_schema_documentation_matches_field_metadata_without_mutating_it
+    schema = Class.new(RailsNinja::Schema::Base) do
+      openapi description: "Record", example: { name: "One" }
+      field :name, RailsNinja::Types::String, description: "Record name", example: "One",
+        openapi: { minLength: 1 }
+    end
+
+    result = RailsNinja::OpenAPI::SchemaRef.schema_to_json_schema(schema)
+
+    assert_equal({ type: "object", description: "Record", example: { name: "One" },
+                   properties: { "name" => { type: "string", description: "Record name",
+                                            example: "One", minLength: 1 } }, required: ["name"] }, result)
+    result[:example][:name] = "Changed"
+    assert_equal({ name: "One" }, schema.openapi[:example])
+  end
+
   def test_string_field
     result = RailsNinja::OpenAPI::SchemaRef.to_json_schema(RailsNinja::Types::String)
 
